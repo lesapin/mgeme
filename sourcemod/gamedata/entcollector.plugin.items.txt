@@ -1,0 +1,82 @@
+"HookableItems"
+{
+    // List of weapons which can/can't be hooked and 
+    // spawn projectiles. "0" = false, "1" = true
+
+    // Scout
+    // Primary
+    "tf_weapon_scattergun"          "0"
+    // Secondary
+    "tf_weapon_pistol"              "0"
+    // Melee
+    "tf_weapon_bat"                 "0"
+
+    // Soldier
+    // Primary
+    "tf_weapon_rocketlauncher"      "1"
+    // Secondary
+    "tf_weapon_shotgun_soldier"     "0"
+    // Melee
+    "tf_weapon_shovel"              "0"
+
+    // Pyro
+    // Primary
+    "tf_weapon_flamethrower"        "0"
+    // Secondary
+    "tf_weapon_shotgun_pyro"        "0"
+    // Melee
+    "tf_weapon_fireaxe"             "0"
+
+    // Demoman
+    // Primary
+    "tf_weapon_grenadelauncher"     "1"
+    // Secondary
+    "tf_weapon_pipebomblauncher"    "0"
+    // Melee
+    "tf_weapon_bottle"              "0"
+
+    // Heavy
+    // Primary
+    "tf_weapon_minigun"             "0"
+    // Secondary
+    "tf_weapon_shotgun_hwg"         "0"
+    "tf_weapon_lunchbox"            "1"
+    // Melee
+    "tf_weapon_fists"               "0"
+
+    // Engineer
+    // Primary
+    "tf_weapon_shotgun_engineer"    "0"
+    // Secondary
+    //"tf_weapon_pistol"              "0"
+    // Melee
+    "tf_weapon_wrench"              "0"
+    // Building
+    //"tf_weapon_builder"             "1"
+
+    // Medic
+    // Primary
+    "tf_weapon_syringegun_medic"    "1"
+    // Secondary
+    "tf_weapon_medigun"             "0"
+    // Melee
+    "tf_weapon_bonesaw"             "0"
+    
+    // Sniper
+    // Primary
+    "tf_weapon_sniperrifle"         "0"
+    "tf_weapon_compound_bow"        "1"
+    // Secondary
+    "tf_weapon_smg"                 "0"
+    // Melee
+    "tf_weapon_club"                "0"
+
+    // Spy
+    // Primary
+    // Secondary
+    "tf_weapon_revolver"            "0"
+    // Melee
+    "tf_weapon_knife"               "0"
+    // Building
+    //"tf_weapon_builder"             "1"
+}
