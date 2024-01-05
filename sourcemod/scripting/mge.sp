@@ -7,6 +7,8 @@
 #include <tf2c>
 #include <sdkhooks>
 #include <morecolors>
+//BEZDMN
+#include <entcollector>
 // ====[ CONSTANTS ]===================================================
 #define PL_VERSION "3.0.3"
 #define MAXARENAS 63
@@ -433,6 +435,7 @@ public void OnPluginStart()
             g_bCanPlayerGetIntel[i] = true;
         }
     }
+
 }
 
 /* OnMapStart()
@@ -1422,6 +1425,12 @@ void ShowPlayerHud(int client)
     if (!IsValidClient(client))
         return;
 
+ //SetHudTextParams(0.01, 0.01, HUDFADEOUTTIME, 255, 255, 255, 255);
+    //BEZDMN
+    //SetHudTextParams(0.9, 0.01, 99999.9, 175, 238, 255, 255);
+    SetHudTextParams(0.9, 0.01, 99999.9, 250, 200, 0, 55);
+    ShowSyncHudText(client, hm_KothCap, "MGE.ME ★");
+
     // HP
     int arena_index = g_iPlayerArena[client];
     int client_slot = g_iPlayerSlot[client];
@@ -1460,14 +1469,14 @@ void ShowPlayerHud(int client)
 
             //Show the capture point percent
             //set it red if red team is capping
-            if (g_iCappingTeam[arena_index] == TEAM_RED)
-                SetHudTextParams(0.50, 0.80, HUDFADEOUTTIME, 255, 0, 0, 255); // Red
+            if (g_iCappingTeam[arena_index] == TEAM_RED) //BEZDMN
+                SetHudTextParams(0.50, 0.80, HUDFADEOUTTIME, 175, 238, 255, 255); // Red
             //Set it blue if blu team is capping
             else if (g_iCappingTeam[arena_index] == TEAM_BLU)
-                SetHudTextParams(0.50, 0.80, HUDFADEOUTTIME, 0, 0, 255, 255); // Blue
+                SetHudTextParams(0.50, 0.80, HUDFADEOUTTIME, 175, 238, 255, 255); // Blue
             //Set it white if no one is capping
             else
-                SetHudTextParams(0.50, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
+                SetHudTextParams(0.50, 0.80, HUDFADEOUTTIME, 175, 238, 255, 255);
             //Show the text
             ShowSyncHudText(client, hm_KothCap, "Point Capture: %.1f", g_fKothCappedPercent[arena_index]);
         }
@@ -1611,6 +1620,9 @@ void ShowPlayerHud(int client)
     }
     SetHudTextParams(0.01, 0.80, HUDFADEOUTTIME, 255, 255, 255, 255);
     ShowSyncHudText(client, hm_TeammateHP, hp_report);
+
+
+
 }
 
 void ShowSpecHudToClient(int client)
@@ -2310,7 +2322,8 @@ bool LoadSpawnPoints()
                                         SetFailState("Error in cfg file. Wrong number of parametrs (%d) on spawn <%i> in arena <%s>",count,g_iArenaSpawns[g_iArenaCount],g_sArenaOriginalName[g_iArenaCount]);
                                     }
                                 } while (KvGetNameSymbol(kv, intstr2, id));
-                                LogMessage("Loaded %d spawns on arena %s.",g_iArenaSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
+                                //BEZDMN
+                                //LogMessage("Loaded %d spawns on arena %s.",g_iArenaSpawns[g_iArenaCount], g_sArenaOriginalName[g_iArenaCount]);
                             } else {
                                 LogError("Could not load spawns on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
                             }
@@ -2318,8 +2331,8 @@ bool LoadSpawnPoints()
                             if (KvGetNameSymbol(kv, "cap", id)) {
                                 KvGetString(kv, "cap",  g_sArenaCap[g_iArenaCount], 64);
                                 g_bArenaHasCap[g_iArenaCount] = true;
-
-                                LogMessage("Found cap point on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
+                                //BEZDMN
+                                //LogMessage("Found cap point on arena %s.", g_sArenaOriginalName[g_iArenaCount]);
                             } else {
                                 g_bArenaHasCap[g_iArenaCount] = false;
                             }
@@ -2360,7 +2373,8 @@ bool LoadSpawnPoints()
                             //parsing allowed classes for current arena
                             char sAllowedClasses[128];
                             KvGetString(kv, "classes", sAllowedClasses, sizeof(sAllowedClasses));
-                            LogMessage("%s classes: <%s>", g_sArenaOriginalName[g_iArenaCount], sAllowedClasses);
+                            //BEZDMN
+                            //LogMessage("%s classes: <%s>", g_sArenaOriginalName[g_iArenaCount], sAllowedClasses);
                             ParseAllowedClasses(sAllowedClasses,g_tfctArenaAllowedClasses[g_iArenaCount]);
                             g_iArenaFraglimit[g_iArenaCount] = g_iArenaMgelimit[g_iArenaCount];
                             UpdateArenaName(g_iArenaCount);
@@ -3564,6 +3578,10 @@ Action Command_Help(int client, int args)
 
 Action Command_First(int client, int args)
 {
+    //BEZDMN
+    //int removed = RemoveClientEntities(client);
+    //PrintToChatAll("entities removed: %i", removed);
+
     if (!client || !IsValidClient(client))
         return Plugin_Continue;
 
@@ -3977,9 +3995,7 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(event.GetInt("userid"));
     int arena_index = g_iPlayerArena[client];
-
     g_tfctPlayerClass[client] = TF2_GetPlayerClass(client);
-
 
     ResetClientAmmoCounts(client);
 
@@ -5000,7 +5016,7 @@ Action Timer_ShowAdv(Handle timer, int userid)
     {
         MC_PrintToChat(client, "%t", "Adv");
 	//BEZDMN
-        //CreateTimer(15.0, Timer_ShowAdv, userid);
+        CreateTimer(15.0, Timer_ShowAdv, userid);
     }
 
     return Plugin_Continue;
@@ -5978,5 +5994,6 @@ void UpdateArenaName(int arena)
         g_bArenaEndif[arena] ? "ENDIF" : ""
     );
     Format(g_sArenaName[arena], sizeof(g_sArenaName), "%s [%s %s]", g_sArenaOriginalName[arena], mode, type);
-    LogMessage("Arena %s updated to %s", g_sArenaOriginalName[arena], g_sArenaName[arena]);
+    //BEZDMN
+    //LogMessage("Arena %s updated to %s", g_sArenaOriginalName[arena], g_sArenaName[arena]);
 }
