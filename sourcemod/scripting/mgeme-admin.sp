@@ -6,39 +6,57 @@
 #pragma newdecls required
 #define PLUGIN_VERSION "1.0.0"
 
-
 public Plugin myinfo = 
 {
     name = "Admin interface for MGE.ME",
     author = "bezdmn",
     description = "Server tools",
     version = PLUGIN_VERSION,
-    url = "mge.me"
+    url = "http://mge.me"
 };
 
 #define SHUTDOWNDELAY 60
 
 public void OnPluginStart()
 {
-    CreateTimer(5.0, SetSignalCallbacks);
+    SetSignalCallbacks();
+}
+
+Action SetSignalCallbacks()
+{ 
+    // Handle SIGINT (Ctrl-C in terminal) gracefully.
+    SetSignalCallback(SIGINT, GracefulShutdown);
+    
+    // ... but leave a way to shutdown the server instantly. 
+    SetSignalCallback(SIGTERM, InstantShutdown);
+
+    // Start and stop profiling.
+    SetSignalCallback(SIGUSR1, StartVProf);
+    SetSignalCallback(SIGUSR2, StopVProf);
+
+    // Fix jittering issues on long-running maps by reloading the map
+    // SIGWINCH is ignored by default so we can repurpose it
+    SetSignalCallback(SIGWINCH, ReloadMap);
+
+    return Plugin_Continue;
 }
 
 void SetSignalCallback(SignalCode signal, SignalCallbackType cb)
 {
     int err = CreateHandler(signal, cb);
-    if (err == view_as<int>(FuncCountError)) // a callback already exists probably because of a plugin reload. 
+    if (err == view_as<int>(FuncCountError)) // A callback already exists probably because of a plugin reload. 
     {
         LogMessage("Resetting handler for signal %i", signal);
-        // remove the previous handler and try again
+        // Remove the previous handler and try again
         RemoveHandler(signal);
         err = CreateHandler(signal, cb);
     }
     else if (err == view_as<int>(SAHandlerError))
     {
-        // a signal handler was set, not neccessarily by this extension but by the process.
-        // this error is like a confirmation that we really want to replace the handler.
+        // A signal handler was set, not neccessarily by this extension but by the process.
+        // This error is like a confirmation that we really want to replace the handler.
         LogError("A handler set by another process was replaced");
-        // we ignore the previous handler. someone else should deal with it.
+        // We ignore the previous handler. someone else should deal with it.
         RemoveHandler(signal);
         err = CreateHandler(signal, cb);
     }
@@ -52,36 +70,24 @@ void SetSignalCallback(SignalCode signal, SignalCallbackType cb)
     LogMessage("Hooked signal %i", signal);
 }
 
-Action SetSignalCallbacks(Handle timer)
-{ 
-    // Handle SIGINT (Ctrl-C in terminal) gracefully.
-    SetSignalCallback(SIGINT, GracefulShutdown);
-    
-    // ... but leave a way to shutdown the server instantly. 
-    SetSignalCallback(SIGTERM, InstantShutdown);
-
-    // Start and stop profiling.
-    SetSignalCallback(SIGUSR1, StartVProf);
-    SetSignalCallback(SIGUSR2, StopVProf);
-
-    // Fix jittering issues on long-running maps by reloading the map.
-    // SIGWINCH is ignored by default so we can repurpose it. 
-    SetSignalCallback(SIGWINCH, ReloadMap);
-
-    return Plugin_Continue;
-}
-
 /****** CALLBACK FUNCTIONS ******/
 
 Action GracefulShutdown()
 {
+    LogMessage("Server shutdown in ~%i seconds", SHUTDOWNDELAY);
+
+    if (!GetClientCount(true)) // zero players in server
+    {
+        LogMessage("No clients in-game, shutting down instantly");
+        ServerCommand("exit");
+    }
+
     ForceRoundTimer(SHUTDOWNDELAY);
 
     CreateTimer(SHUTDOWNDELAY + 1.0, GameEnd);
     CreateTimer(SHUTDOWNDELAY + 10.0, ShutdownServer);
 
     PrintToChatAll("[SERVER] Shutting down in %i seconds for maintenance", SHUTDOWNDELAY);
-    LogMessage("Server shutdown in ~%i seconds", SHUTDOWNDELAY);
 
     return Plugin_Continue;
 }
@@ -149,13 +155,23 @@ Action StopVProf()
 
 Action ReloadMap()
 {
+    LogMessage("Reloading the map in %i seconds", SHUTDOWNDELAY);
+
+    if (!GetClientCount(true)) // zero players in server
+    {
+        LogMessage("No clients in-game, reloading instantly");
+    
+        char CurrentMap[64];
+        GetCurrentMap(CurrentMap, sizeof(CurrentMap));
+        ForceChangeLevel(CurrentMap, "Map reload for maintenance");
+    }
+
     ForceRoundTimer(SHUTDOWNDELAY);
 
     CreateTimer(SHUTDOWNDELAY + 1.0, GameEnd);
     CreateTimer(SHUTDOWNDELAY + 10.0, ChangeLevel);
 
     PrintToChatAll("[SERVER] Reloading the map in %i seconds for maintenance", SHUTDOWNDELAY);
-    LogMessage("Reloading the map in %i seconds", SHUTDOWNDELAY);
 
     return Plugin_Continue;
 }
@@ -185,24 +201,27 @@ void ForceRoundTimer(int seconds)
         }
     
         int NewTimer = CreateEntityByName("team_round_timer");
-        if (!IsValidEntity(NewTimer))
-            SetFailState("Couldn't create round timer entity");
-        
-        HookSingleEntityOutput(NewTimer, "OnFinished", EndGame, true);
-
-        DispatchSpawn(NewTimer);
-
-        SetVariantInt(seconds);
-        AcceptEntityInput(NewTimer, "SetTime");
-        SetVariantInt(seconds);
-        AcceptEntityInput(NewTimer, "SetMaxTime");
-        SetVariantInt(0);
-        AcceptEntityInput(NewTimer, "SetSetupTime");
-        SetVariantInt(1);
-        AcceptEntityInput(NewTimer, "ShowInHud");
-        SetVariantInt(1);
-        AcceptEntityInput(NewTimer, "AutoCountdown");
-        AcceptEntityInput(NewTimer, "Enable");
+        if (!IsValidEntity(NewTimer)) // try to create a new timer entity
+        {
+            // doesn't really matter as it's only for user-friendliness
+            LogError("Couldn't create team_round_timer entity");
+        }
+        else
+        {
+            DispatchSpawn(NewTimer);
+    
+            SetVariantInt(seconds);
+            AcceptEntityInput(NewTimer, "SetTime");
+            SetVariantInt(seconds);
+            AcceptEntityInput(NewTimer, "SetMaxTime");
+            SetVariantInt(0);
+            AcceptEntityInput(NewTimer, "SetSetupTime");
+            SetVariantInt(1);
+            AcceptEntityInput(NewTimer, "ShowInHud");
+            SetVariantInt(1);
+            AcceptEntityInput(NewTimer, "AutoCountdown");
+            AcceptEntityInput(NewTimer, "Enable");
+        }
     }
 }
 
@@ -221,15 +240,9 @@ Action GameEnd(Handle timer)
     else // just shutdown instantly
     {
         LogError("Couldn't create game_end entity. Shutting down");
+        InstantShutdown();
     }
 
-    return Plugin_Continue;
-}
-
-// TODO
-Action EndGame(const char[] output, int caller, int activator, float delay)
-{
-    LogMessage("EndGame entity output");
     return Plugin_Continue;
 }
 
