@@ -21,47 +21,52 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
     CreateTimer(5.0, SetSignalCallbacks);
-    
-    // Disable server CVar change announcements
-    //HookEvent("server_cvar", Event_ServerCVar, EventHookMode_Pre);
 }
 
-public Action Event_ServerCVar(Handle ev, const char[] name, bool dontBroadcast)
+void SetSignalCallback(SignalCode signal, SignalCallbackType cb)
 {
-    return Plugin_Handled;
+    int err = CreateHandler(signal, cb);
+    if (err == view_as<int>(FuncCountError)) // a callback already exists probably because of a plugin reload. 
+    {
+        LogMessage("Resetting handler for signal %i", signal);
+        // remove the previous handler and try again
+        RemoveHandler(signal);
+        err = CreateHandler(signal, cb);
+    }
+    else if (err == view_as<int>(SAHandlerError))
+    {
+        // a signal handler was set, not neccessarily by this extension but by the process.
+        // this error is like a confirmation that we really want to replace the handler.
+        LogError("A handler set by another process was replaced");
+        // we ignore the previous handler. someone else should deal with it.
+        RemoveHandler(signal);
+        err = CreateHandler(signal, cb);
+    }
+
+    if (err != view_as<int>(NoError))
+    {
+        LogError("Critical error, code %i", err);
+        SetFailState("ERR: %i. Failed to attach callback for signal %i", err, signal);
+    }
+
+    LogMessage("Hooked signal %i", signal);
 }
 
 Action SetSignalCallbacks(Handle timer)
 { 
     // Handle SIGINT (Ctrl-C in terminal) gracefully.
-    if (CreateHandler(SIGINT, GracefulShutdown) != view_as<int>(NoError))
-    {
-        LogError("Failed to attach callback for SIGINT. \
-                       a handler might already exist for this signal.");
-    }
+    SetSignalCallback(SIGINT, GracefulShutdown);
     
     // ... but leave a way to shutdown the server instantly. 
-    if (CreateHandler(SIGTERM, InstantShutdown) != view_as<int>(NoError))
-    {
-        LogError("Failed to attach callback for SIGTERM. \
-                       a handler might already exist for this signal.");
-    }
+    SetSignalCallback(SIGTERM, InstantShutdown);
 
     // Start and stop profiling.
-    if (CreateHandler(SIGUSR1, StartVProf) != view_as<int>(NoError) ||
-        CreateHandler(SIGUSR2, StopVProf) != view_as<int>(NoError))
-    {
-        LogError("Failed to attach callbacks for SIGUSR: \
-                       a handler might already exist for this signal.");
-    }
+    SetSignalCallback(SIGUSR1, StartVProf);
+    SetSignalCallback(SIGUSR2, StopVProf);
 
     // Fix jittering issues on long-running maps by reloading the map.
     // SIGWINCH is ignored by default so we can repurpose it. 
-    if (CreateHandler(SIGWINCH, ReloadMap) != view_as<int>(NoError))
-    {
-        LogError("Failed to attach callback for SIGWINCH. \
-                       a handler might already exist for this signal.");
-    }
+    SetSignalCallback(SIGWINCH, ReloadMap);
 
     return Plugin_Continue;
 }
@@ -150,7 +155,7 @@ Action ReloadMap()
     CreateTimer(SHUTDOWNDELAY + 10.0, ChangeLevel);
 
     PrintToChatAll("[SERVER] Reloading the map in %i seconds for maintenance", SHUTDOWNDELAY);
-    LogMessage("Reloading map in %i seconds", SHUTDOWNDELAY);
+    LogMessage("Reloading the map in %i seconds", SHUTDOWNDELAY);
 
     return Plugin_Continue;
 }
