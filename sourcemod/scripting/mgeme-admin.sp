@@ -4,7 +4,8 @@
 #include <sdktools>
 
 #pragma newdecls required
-#define PLUGIN_VERSION "1.0.0"
+
+#define PLUGIN_VERSION "1.1.0"
 
 public Plugin myinfo = 
 {
@@ -16,47 +17,53 @@ public Plugin myinfo =
 };
 
 #define SHUTDOWNDELAY 60
+#define MAXCMDLEN 256
+
+DataPack cmds;
 
 public void OnPluginStart()
 {
+    cmds = CreateDataPack();
     SetSignalCallbacks();
 }
 
 Action SetSignalCallbacks()
 { 
     // Handle SIGINT (Ctrl-C in terminal) gracefully.
-    SetSignalCallback(SIGINT, GracefulShutdown);
+    SetSignalCallback(INT, GracefulShutdown);
     
     // ... but leave a way to shutdown the server instantly. 
-    SetSignalCallback(SIGTERM, InstantShutdown);
+    SetSignalCallback(TERM, InstantShutdown);
 
     // Start and stop profiling.
-    SetSignalCallback(SIGUSR1, StartVProf);
-    SetSignalCallback(SIGUSR2, StopVProf);
+    SetSignalCallback(USR1, StartVProf);
+    SetSignalCallback(USR2, StopVProf);
 
-    // Fix jittering issues on long-running maps by reloading the map
-    // SIGWINCH is ignored by default so we can repurpose it
-    SetSignalCallback(SIGWINCH, ReloadMap);
+    // Fix jittering issues on long-running maps by reloading the map.
+    // SIGWINCH is ignored by default so we can repurpose it. 
+    SetSignalCallback(WINCH, ReloadMap);
 
     return Plugin_Continue;
 }
 
-void SetSignalCallback(SignalCode signal, SignalCallbackType cb)
+void SetSignalCallback(SIG signal, SignalCallbackType cb)
 {
     int err = CreateHandler(signal, cb);
-    if (err == view_as<int>(FuncCountError)) // A callback already exists probably because of a plugin reload. 
+    if (err == view_as<int>(FuncCountError)) // Callback already exists probably because of a plugin reload. 
     {
         LogMessage("Resetting handler for signal %i", signal);
+
         // Remove the previous handler and try again
         RemoveHandler(signal);
         err = CreateHandler(signal, cb);
     }
     else if (err == view_as<int>(SAHandlerError))
     {
-        // A signal handler was set, not neccessarily by this extension but by the process.
+        // Signal handler was set, not neccessarily by this extension but by the process.
         // This error is like a confirmation that we really want to replace the handler.
         LogError("A handler set by another process was replaced");
-        // We ignore the previous handler. someone else should deal with it.
+
+        // Ignore the previous handler. Someone else should deal with it.
         RemoveHandler(signal);
         err = CreateHandler(signal, cb);
     }
@@ -74,12 +81,19 @@ void SetSignalCallback(SignalCode signal, SignalCallbackType cb)
 
 Action GracefulShutdown()
 {
-    LogMessage("Server shutdown in ~%i seconds", SHUTDOWNDELAY);
+    LogMessage("Server shutting down in ~%i seconds", SHUTDOWNDELAY);
 
-    if (!GetClientCount(true)) // zero players in server
+    if (!GetClientCount(true)) // zero clients in-game
     {
         LogMessage("No clients in-game, shutting down instantly");
         ServerCommand("exit");
+    }
+    else
+    {
+        // sv_shutdown shuts down the server after sv_shutdown_timeout_minutes,
+        // or after every player has left/gets kicked from the server.
+        // Set it to a whole number that's greater than SHUTDOWNDELAY;
+        ServerCommand("sv_shutdown");
     }
 
     ForceRoundTimer(SHUTDOWNDELAY);
@@ -97,11 +111,11 @@ Action InstantShutdown()
     // https://github.com/ValveSoftware/Source-1-Games/issues/1726
     LogMessage("Server shutting down");
     ServerCommand("sv_shutdown");
-    //////////////////////////////////
+    ////////////////////////////////// 
 
     for (int client = 1; client < MaxClients; client++)
     {
-        if (IsClientConnected(client))
+        if (IsClientConnected(client) || IsClientAuthorized(client))
         {
             // Send a user-friendly shutdown message
             KickClient(client, "Shutting down for maintenance");
@@ -114,7 +128,6 @@ Action InstantShutdown()
 Action StartVProf()
 {
     ServerCommand("vprof_reset");
-
     ServerCommand("vprof_on");
     LogMessage("Started VProfiler");
 
@@ -123,30 +136,36 @@ Action StartVProf()
 
 Action StopVProf()
 {
-    char Previous[128];
+    ServerCommand("vprof_off");
+    LogMessage("Stopped VProfiler");
+
+    char PreviousLog[64];
+    char RestoreConLogCmd[MAXCMDLEN];
+
     Handle ConLog = FindConVar("con_logfile");
-    
     if (ConLog == null)
     {
-        LogError("Failed to dump vprof log");
+        LogError("Failed to dump vprof report");
     }
     else
     {
-        // Logfile gets dumped in the server root folder
-        GetConVarString(ConLog, Previous, sizeof(Previous));
-        SetConVarString(ConLog, "vprof.txt", false, false);
+        // Dump vprof report in the server root folder
+        GetConVarString(ConLog, PreviousLog, sizeof(PreviousLog));
+        Format(RestoreConLogCmd, sizeof(RestoreConLogCmd), "con_logfile %s", PreviousLog);
 
-        //ServerCommand("con_logfile vprof.txt");
-        ServerCommand("vprof_generate_report"); 
-        ServerCommand("vprof_generate_report_hierarchy");
-        ServerCommand("vprof_generate_report_map_load");
+        ServerCommand("con_logfile \"vprof.txt\"");
 
-        //ServerCommand("con_logfile %s", Previous);
-        SetConVarString(ConLog, Previous, false, false);
+        cmds.WriteString("vprof_generate_report");
+        cmds.WriteString("vprof_generate_report_hierarchy");
+        cmds.WriteString(RestoreConLogCmd);
+        cmds.Reset();
+
+        // Have to stagger commands into the server cmd buffer to get them to dump
+        // stuff into the logfile consecutively. Doesn't seem to work any other way.
+        CreateTimer(0.4, ExecuteCmdDelay, cmds);
+        CreateTimer(0.8, ExecuteCmdDelay, cmds);
+        CreateTimer(1.2, ExecuteCmdDelay, cmds);
     }
-
-    ServerCommand("vprof_off");
-    LogMessage("Stopped VProfiler");
 
     delete ConLog;
 
@@ -157,13 +176,16 @@ Action ReloadMap()
 {
     LogMessage("Reloading the map in %i seconds", SHUTDOWNDELAY);
 
-    if (!GetClientCount(true)) // zero players in server
+    if (!GetClientCount(true)) // Zero players in server
     {
         LogMessage("No clients in-game, reloading instantly");
     
         char CurrentMap[64];
         GetCurrentMap(CurrentMap, sizeof(CurrentMap));
         ForceChangeLevel(CurrentMap, "Map reload for maintenance");
+
+        // Prevent SourceMod from creating the timers unnecessarily.
+        return Plugin_Continue;
     }
 
     ForceRoundTimer(SHUTDOWNDELAY);
@@ -201,9 +223,9 @@ void ForceRoundTimer(int seconds)
         }
     
         int NewTimer = CreateEntityByName("team_round_timer");
-        if (!IsValidEntity(NewTimer)) // try to create a new timer entity
+        if (!IsValidEntity(NewTimer)) // Try to create a new timer entity
         {
-            // doesn't really matter as it's only for user-friendliness
+            // Doesn't really matter as it's only for user-friendliness
             LogError("Couldn't create team_round_timer entity");
         }
         else
@@ -237,7 +259,7 @@ Action GameEnd(Handle timer)
     {
         AcceptEntityInput(EndGameEnt, "EndGame");
     }
-    else // just shutdown instantly
+    else // Just shutdown instantly
     {
         LogError("Couldn't create game_end entity. Shutting down");
         InstantShutdown();
@@ -256,6 +278,15 @@ Action ChangeLevel(Handle timer)
     char CurrentMap[64];
     GetCurrentMap(CurrentMap, sizeof(CurrentMap));
     ForceChangeLevel(CurrentMap, "Map reload for maintenance");
+    return Plugin_Continue;
+}
+
+// Execute a server command with a delay
+Action ExecuteCmdDelay(Handle timer, DataPack data)
+{
+    char cmd[MAXCMDLEN];
+    data.ReadString(cmd, sizeof(cmd));
+    ServerCommand(cmd);
     return Plugin_Continue;
 }
 
