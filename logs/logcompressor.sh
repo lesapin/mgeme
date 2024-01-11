@@ -19,7 +19,7 @@ elif [ $# -eq 2 ]; then
         gzip "$FLDR.tar"
         # cleanup
         rm -rf "$FLDR"
-        rm "*.log"
+        rm *.log
     else
         echo "bad argument"
     fi
