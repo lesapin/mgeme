@@ -13,11 +13,11 @@ elif [ $# -eq 2 ]; then
             mkdir $FLDR
         fi
         for f in $(du ./*.log --apparent-size -t $2K | cut -d '	' -f 2); do
-            cp "$f" "$FLDR/$(date -r $f +l%d%H.log)"
+            mv "$f" "$FLDR/$(date -r $f +l%d%H.log)"
         done
-        tar -cf $FLDR.tar $FLDR
-        gzip $FLDR.tar
-        rm -rf $FLDR
+        tar -cf "$FLDR.tar" "$FLDR"
+        gzip "$FLDR.tar"
+        rm -rf "$FLDR"
     else
         echo "bad argument"
     fi
