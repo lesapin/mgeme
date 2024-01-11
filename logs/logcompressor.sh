@@ -8,7 +8,7 @@ if [ $# -lt 1 ]; then
 elif [ $# -eq 2 ]; then
     cd "$(dirname "$0")"
     if [ $1 = "--min-filesize" ]; then
-        FLDR="$(date -d '$(date) 1 month ago' +%G%b)"
+        FLDR=$(date -d "$(date) 1 month ago" +%G%b)
         if ! [ -d $FLDR ]; then
             mkdir $FLDR
         fi
