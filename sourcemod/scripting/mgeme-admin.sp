@@ -1,11 +1,14 @@
 #pragma semicolon 1
 
-#include <signals>
 #include <sdktools>
+#include <dbi>
+#include <signals>
+#include <etf2l_query>
+#include <morecolors>
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.1.0"
+#define PLUGIN_VERSION "1.2.0"
 
 public Plugin myinfo = 
 {
@@ -21,10 +24,86 @@ public Plugin myinfo =
 
 DataPack cmds;
 
+DBStatement GetPlayerInfoStmt = null;
+
+Handle QueryTimers[MAXPLAYERS+1];
+
 public void OnPluginStart()
 {
     cmds = CreateDataPack();
     SetSignalCallbacks();
+}
+
+public void OnClientAuthorized(int client, const char[] auth)
+{
+    char steamid[64];
+
+    if (GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid), true))
+    {
+        if (ETF2LQuery(steamid))
+        {
+            DataPack pack;
+            QueryTimers[client] = CreateDataTimer(1.0, QueryDb, pack);
+            pack.WriteCell(client);
+            pack.WriteString(steamid);
+        }
+    }
+}
+
+public void OnClientDisconnect(int client)
+{
+    delete QueryTimers[client];
+}
+
+public Action QueryDb(Handle timer, DataPack pack)
+{
+    char err[255];
+    char steamid[64];
+
+    pack.Reset();
+    int client = pack.ReadCell();
+    pack.ReadString(steamid, sizeof(steamid));
+    QueryTimers[client] = null;
+
+    Database db = SQL_Connect(SQL_CONF, true, err, sizeof(err));
+
+    if (db != null)
+    {
+        GetPlayerInfoStmt = SQL_PrepareQuery(db, "SELECT name, team FROM players WHERE steamid=?",
+                                             err, sizeof(err));
+        if (GetPlayerInfoStmt == null)
+        {
+            LogError("GetPlayerInfoStmt error");
+        }
+        else
+        {
+            if (!ActiveETF2LParticipant(steamid))
+            {
+
+            }
+            else if (ActiveETF2LBan(steamid))
+            {
+
+            }
+            else
+            {
+                SQL_BindParamString(GetPlayerInfoStmt, 0, steamid, false);
+
+                if (SQL_Execute(GetPlayerInfoStmt))
+                {
+                    char Name[64], Team[64];
+
+                    SQL_FetchRow(GetPlayerInfoStmt); 
+                    SQL_FetchString(GetPlayerInfoStmt, 0, Name, sizeof(Name));
+                    SQL_FetchString(GetPlayerInfoStmt, 1, Team, sizeof(Team));
+
+                    PrintToServer("Player %s (%s) connected", Name, Team);
+                }
+            }
+        }
+    }   
+    
+    CloseHandle(db);
 }
 
 Action SetSignalCallbacks()
