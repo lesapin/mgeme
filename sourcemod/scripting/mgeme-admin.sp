@@ -24,14 +24,15 @@ public Plugin myinfo =
 
 DataPack cmds;
 
-DBStatement GetPlayerInfoStmt = null;
-
 Handle QueryTimers[MAXPLAYERS+1];
 
 public void OnPluginStart()
 {
     cmds = CreateDataPack();
     SetSignalCallbacks();
+
+    HookEvent("player_connect_client", Event_PlayerConnect, EventHookMode_Pre);
+    HookEvent("player_disconnect", Event_PlayerDisconnect, EventHookMode_Pre);
 }
 
 public void OnClientAuthorized(int client, const char[] auth)
@@ -40,19 +41,25 @@ public void OnClientAuthorized(int client, const char[] auth)
 
     if (GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid), true))
     {
-        if (ETF2LQuery(steamid))
-        {
-            DataPack pack;
-            QueryTimers[client] = CreateDataTimer(1.0, QueryDb, pack);
-            pack.WriteCell(client);
-            pack.WriteString(steamid);
-        }
+        ETF2LQuery(steamid);
+
+        DataPack pack;
+        QueryTimers[client] = CreateDataTimer(2.0, QueryDb, pack);
+        pack.WriteCell(client);
+        pack.WriteString(steamid);
     }
 }
 
 public void OnClientDisconnect(int client)
 {
     delete QueryTimers[client];
+
+    if (GetClientTime(client) > 4.0) // player wasn't kicked instantly
+    {
+        char Name[64];
+        GetClientName(client, Name, sizeof(Name));
+        MC_PrintToChatAll("{lightgreen}%s {default} left the game", Name);
+    } 
 }
 
 public Action QueryDb(Handle timer, DataPack pack)
@@ -69,21 +76,38 @@ public Action QueryDb(Handle timer, DataPack pack)
 
     if (db != null)
     {
-        GetPlayerInfoStmt = SQL_PrepareQuery(db, "SELECT name, team FROM players WHERE steamid=?",
+        DBStatement GetPlayerInfoStmt = SQL_PrepareQuery(db, "SELECT name, team FROM players WHERE steamid=?",
                                              err, sizeof(err));
-        if (GetPlayerInfoStmt == null)
+
+        DBStatement PlayerExistsStmt = SQL_PrepareQuery(db, "SELECT EXISTS(SELECT 1 FROM players WHERE steamid=?)",
+                                             err, sizeof(err));
+
+        if (GetPlayerInfoStmt == null || PlayerExistsStmt == null)
         {
-            LogError("GetPlayerInfoStmt error");
+            LogError("SQL prepared statement error");
         }
         else
         {
-            if (!ActiveETF2LParticipant(steamid))
-            {
+            SQL_BindParamString(PlayerExistsStmt, 0, steamid, false);
+            bool IsRegistered = false;
 
+            if (SQL_Execute(PlayerExistsStmt))
+            {
+                SQL_FetchRow(PlayerExistsStmt);
+                IsRegistered = view_as<bool>(SQL_FetchInt(PlayerExistsStmt, 0));
+            }
+
+            if (!IsRegistered)
+            { 
+                KickClient(client, "Registered ETF2L players only");
+            } 	
+            else if (!ActiveETF2LParticipant(steamid))
+            {
+                KickClient(client, "Atleast one ETF2L match participation is required");
             }
             else if (ActiveETF2LBan(steamid))
             {
-
+                KickClient(client, "Active ETF2L ban");
             }
             else
             {
@@ -97,13 +121,25 @@ public Action QueryDb(Handle timer, DataPack pack)
                     SQL_FetchString(GetPlayerInfoStmt, 0, Name, sizeof(Name));
                     SQL_FetchString(GetPlayerInfoStmt, 1, Team, sizeof(Team));
 
-                    PrintToServer("Player %s (%s) connected", Name, Team);
+                    if (StrEqual(Team, ""))
+                    {
+                        StrCat(Team, sizeof(Team), "no team");
+                    }
+
+                    SetClientName(client, Name);
+
+                    MC_PrintToChatAll("{lightgreen}%s (%s) {default}has joined the game", Name, Team);
                 }
             }
         }
+
+        delete PlayerExistsStmt;
+        delete GetPlayerInfoStmt;
     }   
     
-    CloseHandle(db);
+    delete db;
+
+    return Plugin_Continue;
 }
 
 Action SetSignalCallbacks()
@@ -367,5 +403,21 @@ Action ExecuteCmdDelay(Handle timer, DataPack data)
     data.ReadString(cmd, sizeof(cmd));
     ServerCommand(cmd);
     return Plugin_Continue;
+}
+
+/** EVENTS **/
+
+public Action Event_PlayerConnect(Event ev, const char[] name, bool dontBroadcast)
+{
+   SetEventBroadcast(ev, true);
+   ev.BroadcastDisabled = true;
+   return Plugin_Continue;
+}
+
+public Action Event_PlayerDisconnect(Event ev, const char[] name, bool dontBroadcast)
+{
+   SetEventBroadcast(ev, true);
+   ev.BroadcastDisabled = true;
+   return Plugin_Continue;
 }
 
