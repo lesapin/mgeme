@@ -55,6 +55,8 @@ char LineBreak  [PRINT_LEN];
 
 public void OnPluginStart()
 {
+    RegConsoleCmd("tempstats", Command_TempStats);
+
     Handle hGameData = LoadGameConfigFile(GAMEDATA);
     if (!hGameData)
         SetFailState("Couldn't load gamedata \"gamedata/%s.txt\"", GAMEDATA);
@@ -137,6 +139,21 @@ public void OnPluginStart()
     }
 
     delete hGameData;
+}
+
+public void OnClientAuthorized(int client, const char[] auth)
+{
+    // clean up for new client
+    ResetClientStats(client);
+}
+
+public void OnClientDisconnect(int client)
+{
+    // client disconnected in middle of stat tracking
+    if (StopTime[client] == 0 && StartTime[client] != 0)
+    {
+        SDKUnhook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
+    }
 }
 
 /****** NATIVES ******/
@@ -324,4 +341,14 @@ void ResetClientStats(int client)
     Deaths[client] = 0;
     StartTime[client] = 0;
     StopTime[client] = 0;
+}
+
+/*** CON COMMANDS ***/
+
+public Action Command_TempStats(int client, int args)
+{
+    MC_PrintToChat(client, "{green}[TempStats]");
+    MC_PrintToChat(client, "{default}   Track stats and summarize your performance");
+    MC_PrintToChat(client, "{default}   Made by: {lightgreen}bezdmn");
+    return Plugin_Handled;
 }
