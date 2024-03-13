@@ -2,7 +2,7 @@
 #include <dhooks>
 #include <morecolors>
 
-#define PLUGIN_VERSION "2.0.0"
+#define PLUGIN_VERSION "2.0.1"
 
 public Plugin myinfo = 
 {
@@ -141,19 +141,14 @@ public void OnPluginStart()
     delete hGameData;
 }
 
-public void OnClientAuthorized(int client, const char[] auth)
+public void OnClientPutInServer(int client)
 {
-    // clean up for new client
-    ResetClientStats(client);
+    SDKHook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
 }
 
 public void OnClientDisconnect(int client)
 {
-    // client disconnected in middle of stat tracking
-    if (StopTime[client] == 0 && StartTime[client] != 0)
-    {
-        SDKUnhook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
-    }
+    SDKUnhook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
 }
 
 /****** NATIVES ******/
@@ -161,22 +156,22 @@ public void OnClientDisconnect(int client)
 any Native_TempStats_Start(Handle plugin, int nParams)
 {
     int client = GetNativeCell(1);
-    if (client > 0 && client < MaxClients && IsClientInGame(client))
+
+    if (client > 0 && client <= MaxClients && IsClientInGame(client))
     {
         ResetClientStats(client);
         StartTime[client] = GetTime();
-        SDKHook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
     }
 }
 
 any Native_TempStats_Stop(Handle plugin, int nParams)
 {
     int client = GetNativeCell(1);
-    if (client > 0 && client < MaxClients && IsClientInGame(client))
+
+    if (client > 0 && client <= MaxClients && IsClientInGame(client))
     {
         StopTime[client] = GetTime();
         PrettyPrint(client);
-        SDKUnhook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
         MC_PrintToChat(client, "{green}[TempStats] {default}See console for a summary");
     }
 }
@@ -184,7 +179,7 @@ any Native_TempStats_Stop(Handle plugin, int nParams)
 any Native_TempStats_Reset(Handle plugin, int nParams)
 {
     int client = GetNativeCell(1);
-    if (client > 0 && client < MaxClients && IsClientInGame(client))
+    if (client > 0 && client <= MaxClients && IsClientInGame(client))
     {
         ResetClientStats(client);
     }
@@ -308,7 +303,7 @@ void PrettyPrint(int client)
             GetEdictClassname(GetPlayerWeaponSlot(client, slot), weapon_name, sizeof(weapon_name));
 
             PrintToConsole(client, "%s", weapon_name[10]);
-            PrintToConsole(client, "\t\t%i\t%0.0f\t%i\t%i\t\t%0.0f\%\t\t%0.0f", 
+            PrintToConsole(client, "\t\t%i\t%0.0f\t%i\t%i\t\t%0.0f\t\t%0.0f", 
                 Kills[client][slot],
                 Damage[client][slot],
                 Hits[client][slot], 
@@ -320,11 +315,11 @@ void PrettyPrint(int client)
     }
 
     float dmgperlife = totaldmg / float(Deaths[client]+1);
-    float dmgpermin = totaldmg / duration;
+    //float dmgpermin = totaldmg / duration;
 
     PrintToConsole(client, "");
-    PrintToConsole(client, "kills: %i\tdeaths: %i\ttotal damage: %0.0f\tdmg/life: %0.0f\tdmg/min: %0.0f", 
-                            totalkills, Deaths[client], totaldmg, dmgperlife, dmgpermin);
+    PrintToConsole(client, "kills: %i\tdeaths: %i\ttotal damage: %0.0f\tdmg/life: %0.0f", 
+                            totalkills, Deaths[client], totaldmg, dmgperlife);
     PrintToConsole(client, "");
 }
 
@@ -347,8 +342,9 @@ void ResetClientStats(int client)
 
 public Action Command_TempStats(int client, int args)
 {
-    MC_PrintToChat(client, "{green}[TempStats]");
+    MC_PrintToChat(client, "{green}[TempStats] {default}ver.%s", PLUGIN_VERSION);
     MC_PrintToChat(client, "{default}   Track stats and summarize your performance");
-    MC_PrintToChat(client, "{default}   Made by: {lightgreen}bezdmn");
+    MC_PrintToChat(client, "{default}   Plugin by: {lightgreen}Robert");
+    MC_PrintToChat(client, "{default}   Thanks to {lightgreen}k046 {default}and {lightgreen}chris_kz");
     return Plugin_Handled;
 }
