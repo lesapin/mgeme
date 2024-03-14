@@ -1,6 +1,7 @@
 #include <sdkhooks>
 #include <dhooks>
 #include <morecolors>
+#include <tempstats>
 
 #define PLUGIN_VERSION "2.0.1"
 
@@ -50,6 +51,8 @@ int ActiveSlot  [MAXPLAYERS],
     StopTime    [MAXPLAYERS];
 
 float Damage    [MAXPLAYERS][NUM_SLOTS];
+
+bool IsTracked  [MAXPLAYERS];
 
 char LineBreak  [PRINT_LEN];
 
@@ -129,7 +132,7 @@ public void OnPluginStart()
 
     /****** EVENT HOOKS ******/
 
-    HookEvent("player_death", Event_PlayerDeath);
+    HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 
     /****** PRETTY PRINTING ******/
     
@@ -153,7 +156,7 @@ public void OnClientDisconnect(int client)
 
 /****** NATIVES ******/
 
-any Native_TempStats_Start(Handle plugin, int nParams)
+public int Native_TempStats_Start(Handle plugin, int nParams)
 {
     int client = GetNativeCell(1);
 
@@ -161,28 +164,39 @@ any Native_TempStats_Start(Handle plugin, int nParams)
     {
         ResetClientStats(client);
         StartTime[client] = GetTime();
+        IsTracked[client] = true;
     }
+
+    return 0;
 }
 
-any Native_TempStats_Stop(Handle plugin, int nParams)
+public int Native_TempStats_Stop(Handle plugin, int nParams)
 {
     int client = GetNativeCell(1);
 
     if (client > 0 && client <= MaxClients && IsClientInGame(client))
     {
-        StopTime[client] = GetTime();
-        PrettyPrint(client);
-        MC_PrintToChat(client, "{green}[TempStats] {default}See console for a summary");
+        if (IsTracked[client])
+        {
+            StopTime[client] = GetTime();
+            PrettyPrint(client);
+            MC_PrintToChat(client, "{green}[TempStats] {default}See console for a summary");
+            IsTracked[client] = false;
+        }
     }
+
+    return 0;
 }
 
-any Native_TempStats_Reset(Handle plugin, int nParams)
+public int Native_TempStats_Reset(Handle plugin, int nParams)
 {
     int client = GetNativeCell(1);
     if (client > 0 && client <= MaxClients && IsClientInGame(client))
     {
         ResetClientStats(client);
     }
+
+    return 0;
 }
 
 /****** CALLBACKS ******/
@@ -247,10 +261,12 @@ public MRESReturn Detour_WeaponChange(int pThis, Handle hRet, Handle hParams)
     return MRES_Ignored;
 }
 
-public Action Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
+public void Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
 {
     int victim = GetClientOfUserId(ev.GetInt("userid"));
     int attacker = GetClientOfUserId(ev.GetInt("attacker"));
+
+    Deaths[victim]++;
 
     if (victim != attacker)
     {
@@ -263,10 +279,6 @@ public Action Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
             }
         }
     }
-
-    Deaths[victim]++;
-
-    return Plugin_Continue;
 }
 
 /****** UTILITY *******/
@@ -333,9 +345,10 @@ void ResetClientStats(int client)
         ShotsFired[client][slot] = 0;
     }
 
-    Deaths[client] = 0;
+    Deaths[client]    = 0;
     StartTime[client] = 0;
-    StopTime[client] = 0;
+    StopTime[client]  = 0;
+    IsTracked[client] = false;
 }
 
 /*** CON COMMANDS ***/
