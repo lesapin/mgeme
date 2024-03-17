@@ -3,7 +3,7 @@
 #include <morecolors>
 #include <tempstats>
 
-#define PLUGIN_VERSION "2.0.1"
+#define PLUGIN_VERSION "2.1.1"
 
 public Plugin myinfo = 
 {
@@ -50,15 +50,26 @@ int ActiveSlot  [MAXPLAYERS],
     StartTime   [MAXPLAYERS],
     StopTime    [MAXPLAYERS];
 
-float Damage    [MAXPLAYERS][NUM_SLOTS];
+float Damage    [MAXPLAYERS][NUM_SLOTS],
+      DamageTot [MAXPLAYERS];
 
 bool IsTracked  [MAXPLAYERS];
 
 char LineBreak  [PRINT_LEN];
 
+enum
+{
+    TEAM_NONE = 0,
+    TEAM_SPEC,
+    TEAM_RED,
+    TEAM_BLU
+};
+
 public void OnPluginStart()
 {
     RegConsoleCmd("tempstats", Command_TempStats);
+    RegConsoleCmd("tempstats2", Command_TempStats);
+    RegConsoleCmd("tstats", Command_Toggle_TempStats);
 
     Handle hGameData = LoadGameConfigFile(GAMEDATA);
     if (!hGameData)
@@ -132,7 +143,8 @@ public void OnPluginStart()
 
     /****** EVENT HOOKS ******/
 
-    HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
+    HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
+    HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
 
     /****** PRETTY PRINTING ******/
     
@@ -147,6 +159,7 @@ public void OnPluginStart()
 public void OnClientPutInServer(int client)
 {
     SDKHook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
+    ResetClientStats(client);
 }
 
 public void OnClientDisconnect(int client)
@@ -207,12 +220,24 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
 {
     if (weapon > 0 && victim != attacker)
     {
+        // start stat tracking on first point of damage
+        if ((DamageTot[attacker] == 0 || DamageTot[victim] == 0) && 
+            (StartTime[attacker] == 0 || StartTime[victim] == 0)
+        ) 
+        {
+            ResetClientStats(attacker);
+            ResetClientStats(victim);
+            StartTime[attacker] = GetTime();
+            StartTime[victim] = GetTime();
+        }
+
         int itemIndex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
         for (int i = 0; i < NUM_SLOTS; i++)
         {
             if (WeaponId[attacker][i] == itemIndex)
             {
                 Damage[attacker][i] += damage;
+                DamageTot[attacker] += damage;
                 Hits[attacker][i]++;
             }
         }
@@ -261,12 +286,12 @@ public MRESReturn Detour_WeaponChange(int pThis, Handle hRet, Handle hParams)
     return MRES_Ignored;
 }
 
-public void Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
+/*** EVENTS ***/
+
+void Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
 {
     int victim = GetClientOfUserId(ev.GetInt("userid"));
     int attacker = GetClientOfUserId(ev.GetInt("attacker"));
-
-    Deaths[victim]++;
 
     if (victim != attacker)
     {
@@ -278,6 +303,44 @@ public void Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
                 Kills[attacker][i]++;
             }
         }
+    }
+
+    Deaths[victim]++;
+
+    if (Deaths[victim] == 20)
+    {
+	StopTime[attacker] = GetTime();
+	StopTime[victim] = GetTime();
+
+        if (IsTracked[attacker])
+        { 
+            PrettyPrint(attacker);
+            MC_PrintToChat(attacker, "{green}[TempStats] {default}See console for summary");
+        } 
+        if (IsTracked[victim])
+        {
+            PrettyPrint(victim);
+            MC_PrintToChat(victim, "{green}[TempStats] {default}See console for summary");
+        }
+
+        ResetClientStats(attacker);
+        ResetClientStats(victim);
+    }
+}
+
+void Event_PlayerTeam(Event ev, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(ev.GetInt("userid"));
+    if (!client)
+        return;
+
+    int team = ev.GetInt("team");
+
+    // mgemod always places the player in spec before spawning in
+    // and when removing from an arena
+    if (team == TEAM_SPEC)
+    { 
+        ResetClientStats(client);
     }
 }
 
@@ -345,19 +408,38 @@ void ResetClientStats(int client)
         ShotsFired[client][slot] = 0;
     }
 
+    DamageTot[client] = 0.0;
     Deaths[client]    = 0;
+
     StartTime[client] = 0;
     StopTime[client]  = 0;
-    IsTracked[client] = false;
 }
 
 /*** CON COMMANDS ***/
 
 public Action Command_TempStats(int client, int args)
 {
-    MC_PrintToChat(client, "{green}[TempStats] {default}ver.%s", PLUGIN_VERSION);
+    MC_PrintToChat(client, "{green}[TempStats] {default}Ver. %s", PLUGIN_VERSION);
     MC_PrintToChat(client, "{default}   Track stats and summarize your performance");
+    MC_PrintToChat(client, "{default}   Usage: {green}/tstats {default} to toggle tracking");
     MC_PrintToChat(client, "{default}   Plugin by: {lightgreen}Robert");
     MC_PrintToChat(client, "{default}   Thanks to {lightgreen}k046 {default}and {lightgreen}chris_kz");
+
+    return Plugin_Handled;
+}
+
+public Action Command_Toggle_TempStats(int client, int args)
+{
+    if (IsTracked[client])
+    {
+        IsTracked[client] = false;
+        MC_PrintToChat(client, "{green}[TempStats] {default}Stat tracking {green}off");
+    }
+    else
+    { 
+        IsTracked[client] = true;
+        MC_PrintToChat(client, "{green}[TempStats] {default}Stat tracking {green}on");
+    } 
+
     return Plugin_Handled;
 }
