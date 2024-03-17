@@ -5,6 +5,7 @@
 #include <signals>
 #include <etf2l_query>
 #include <morecolors>
+#include <tempstats>
 
 #pragma newdecls required
 
@@ -33,6 +34,12 @@ public void OnPluginStart()
 
     HookEvent("player_connect_client", Event_PlayerConnect, EventHookMode_Pre);
     HookEvent("player_disconnect", Event_PlayerDisconnect, EventHookMode_Pre);
+
+    //RegConsoleCmd("tstats_start", Command_TempStats_Start);
+    //RegConsoleCmd("tstats_stop", Command_TempStats_Stop);
+    //RegConsoleCmd("tstats_reset", Command_TempStats_Reset);
+
+    RegConsoleCmd("div", Command_Div);
 }
 
 public void OnClientAuthorized(int client, const char[] auth)
@@ -48,6 +55,11 @@ public void OnClientAuthorized(int client, const char[] auth)
         pack.WriteCell(client);
         pack.WriteString(steamid);
     }
+}
+
+public void OnClientPutInServer(int client)
+{
+    CreateTimer(10.0, WelcomeMessage, GetClientSerial(client));
 }
 
 public void OnClientDisconnect(int client)
@@ -103,7 +115,7 @@ public Action QueryDb(Handle timer, DataPack pack)
             } 	
             else if (!ActiveETF2LParticipant(steamid))
             {
-                KickClient(client, "Atleast one ETF2L match participation is required");
+                KickClient(client, "One ETF2L match participation required");
             }
             else if (ActiveETF2LBan(steamid))
             {
@@ -216,7 +228,8 @@ Action GracefulShutdown()
     CreateTimer(SHUTDOWNDELAY + 1.0, GameEnd);
     CreateTimer(SHUTDOWNDELAY + 10.0, ShutdownServer);
 
-    PrintToChatAll("[SERVER] Shutting down in %i seconds for maintenance", SHUTDOWNDELAY);
+    //PrintToChatAll("[SERVER] Shutting down in %i seconds for maintenance", SHUTDOWNDELAY);
+    MC_PrintToChatAll("{gold}[SERVER] {default}Shutting down in %i seconds for maintenance", SHUTDOWNDELAY);
 
     return Plugin_Continue;
 }
@@ -308,7 +321,8 @@ Action ReloadMap()
     CreateTimer(SHUTDOWNDELAY + 1.0, GameEnd);
     CreateTimer(SHUTDOWNDELAY + 10.0, ChangeLevel);
 
-    PrintToChatAll("[SERVER] Reloading the map in %i seconds for maintenance", SHUTDOWNDELAY);
+    //PrintToChatAll("[SERVER] Reloading the map in %i seconds for maintenance", SHUTDOWNDELAY);
+    MC_PrintToChatAll("{gold}[SERVER] {default}Refreshing the map in %i seconds", SHUTDOWNDELAY);
 
     return Plugin_Continue;
 }
@@ -421,3 +435,59 @@ public Action Event_PlayerDisconnect(Event ev, const char[] name, bool dontBroad
    return Plugin_Continue;
 }
 
+/*** CONSOLE COMMANDS ***/
+
+public Action Command_TempStats_Start(int client, int args)
+{
+    TempStats_Start(client);
+    return Plugin_Handled;
+}
+
+public Action Command_TempStats_Stop(int client, int args)
+{
+    TempStats_Stop(client);
+    return Plugin_Handled;
+}
+
+public Action Command_TempStats_Reset(int client, int args)
+{
+    TempStats_Reset(client);
+    return Plugin_Handled;
+}
+
+public Action Command_Div(int client, int args)
+{
+    int rand = GetRandomInt(0,6);
+    char name[32];
+
+    if (args == 0)
+        GetClientName(client, name, sizeof(name));
+    else if (args == 1)
+        GetCmdArgString(name, sizeof(name));  
+    else
+       Format(name, sizeof(name), "my mother"); 
+
+    if (rand == 0)
+        PrintToChatAll("%s is without a doubt a premiership level player!", name);
+    else 
+        PrintToChatAll("%s is a division %i player", name, rand);
+
+    return Plugin_Handled;
+}
+
+/*** TIMERS ***/
+
+public Action WelcomeMessage(Handle timer, int serial)
+{
+    int client = GetClientFromSerial(serial);
+
+    if (client == 0 || !IsClientInGame(client))
+    { 
+       return Plugin_Stop;
+    } 
+
+    MC_PrintToChat(client, "{olive}View player info using {default}!profile [name]");
+    MC_PrintToChat(client, "{olive}Toggle stat tracking with {default}!tstats");
+
+    return Plugin_Continue;
+}
