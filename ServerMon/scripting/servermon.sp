@@ -80,7 +80,10 @@ Action DumpStats_Cmd(int args)
 {
     if (!args)
     {
-        DumpStats_Callback();
+        char tmp[32];
+        FormatTime(tmp, sizeof(tmp), "L%G%m%d", GetTime());
+
+        DumpStats(tmp);
     }
 
     return Plugin_Handled;
@@ -90,7 +93,10 @@ Action DumpStats_Callback()
 {
     char tmp[32];
     FormatTime(tmp, sizeof(tmp), "L%G%m%d", GetTime());
+    
     DumpStats(tmp);
+    ResetStats();
+
     return Plugin_Handled;
 }
 
@@ -138,6 +144,8 @@ bool DumpStats(const char[] filename)
         WriteFileLine(f, "UNIQUECLIENTS %i", snapshot.Length);
 
         LogMessage("Dumped server stats in %s", FilePath);
+
+        delete snapshot;
     }
     else
     {
@@ -147,4 +155,26 @@ bool DumpStats(const char[] filename)
 
     delete f;
     return true;
+}
+
+void ResetStats()
+{
+    CONNECTIONS = CUR_CLIENTS;
+    MAX_CLIENTS = CUR_CLIENTS;
+
+    if (CUR_CLIENTS == 0)
+        LAST_PLAYER = GetTime();
+
+    StringMapSnapshot snapshot = UniquePlayers.Snapshot();
+    UniquePlayers.Clear();
+
+    char steamid[64]; 
+
+    for (int i = 0; i < snapshot.Length; i++)
+    {
+        snapshot.GetKey(i, steamid, sizeof(steamid));
+        UniquePlayers.SetValue(steamid, GetTime(), true);
+    }
+
+    delete snapshot;
 }
