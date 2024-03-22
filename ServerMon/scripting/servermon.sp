@@ -129,8 +129,8 @@ bool DumpStats(const char[] filename)
             }
         }
 
-        for (int i = 0; i < MAX_PLAYER_SLOTS; i++)
-            totalPlaytime += PlaytimeStore[i];
+        //for (int i = 0; i < MAX_PLAYER_SLOTS; i++)
+        //    totalPlaytime += PlaytimeStore[i];
 
         WriteFileLine(f, "MANHOURS %i", totalPlaytime);
 
