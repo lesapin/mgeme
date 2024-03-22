@@ -145,6 +145,7 @@ public void OnPluginStart()
 
     HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
     HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
+    HookEvent("player_class", Event_PlayerClass, EventHookMode_Post);
 
     /****** PRETTY PRINTING ******/
     
@@ -220,6 +221,27 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
 {
     if (weapon > 0 && victim != attacker)
     {
+        // stop stat tracking on 20 or more deaths
+        if (Deaths[victim] >= 20 || Deaths[attacker] >= 20)
+        {
+	    StopTime[attacker] = GetTime();
+	    StopTime[victim] = GetTime();
+
+            if (IsTracked[attacker])
+            { 
+                PrettyPrint(attacker);
+                MC_PrintToChat(attacker, "{green}[TempStats] {default}See console for summary");
+            } 
+            if (IsTracked[victim])
+            {
+                PrettyPrint(victim);
+                MC_PrintToChat(victim, "{green}[TempStats] {default}See console for summary");
+            }
+
+            ResetClientStats(attacker);
+            ResetClientStats(victim);
+        }
+
         // start stat tracking on first point of damage
         if ((DamageTot[attacker] == 0 || DamageTot[victim] == 0) && 
             (StartTime[attacker] == 0 || StartTime[victim] == 0)
@@ -232,6 +254,7 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
         }
 
         int itemIndex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+
         for (int i = 0; i < NUM_SLOTS; i++)
         {
             if (WeaponId[attacker][i] == itemIndex)
@@ -257,16 +280,27 @@ public MRESReturn Detour_WeaponFired(Address pThis, Handle hRet, Handle hParams)
 // Update active weapon
 public MRESReturn Detour_WeaponSwitch(int pThis, Handle hRet, Handle hParams)
 {
-    Address pWeapon = DHookGetParamAddress(hParams, 1); // CBaseCombatWeapon
-    int slot = SDKCall(g_hWeaponSlot, pWeapon);
+    if (pThis == 0)
+        return MRES_Ignored;
 
-    ActiveSlot[pThis] = slot;
+    if (IsTracked[pThis])
+    {
+        Address pWeapon = DHookGetParamAddress(hParams, 1); // CBaseCombatWeapon
+
+        if (pWeapon != Address_Null)
+        {
+            int slot = SDKCall(g_hWeaponSlot, pWeapon);
+            ActiveSlot[pThis] = slot;
+        }
+    }
 
     return MRES_Ignored;
 }
 
 public MRESReturn Detour_WeaponChange(int pThis, Handle hRet, Handle hParams)
 {
+    if (IsTracked[pThis])
+    {
     Address pEcon = DHookGetParamAddress(hParams, 3);
     int windex = SDKCall(g_hWeaponIndex, pEcon);
 
@@ -281,6 +315,7 @@ public MRESReturn Detour_WeaponChange(int pThis, Handle hRet, Handle hParams)
             Hits[pThis][i]       = 0;
             WeaponId[pThis][i]   = windex;
         }
+    }
     }
 
     return MRES_Ignored;
@@ -307,7 +342,7 @@ void Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
 
     Deaths[victim]++;
 
-    if (Deaths[victim] == 20)
+    if (Deaths[victim] >= 20 && victim != attacker && attacker != 0)
     {
 	StopTime[attacker] = GetTime();
 	StopTime[victim] = GetTime();
@@ -326,6 +361,12 @@ void Event_PlayerDeath(Event ev, const char[] name, bool dontBroadcast)
         ResetClientStats(attacker);
         ResetClientStats(victim);
     }
+}
+
+void Event_PlayerClass(Event ev, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(ev.GetInt("userid"));
+    Deaths[client]++;
 }
 
 void Event_PlayerTeam(Event ev, const char[] name, bool dontBroadcast)
@@ -375,7 +416,10 @@ void PrettyPrint(int client)
             totalkills += Kills[client][slot];
 
             char weapon_name[64];
-            GetEdictClassname(GetPlayerWeaponSlot(client, slot), weapon_name, sizeof(weapon_name));
+            int weaponInSlot = GetPlayerWeaponSlot(client, slot);
+
+            if (weaponInSlot > 0)
+                GetEdictClassname(weaponInSlot, weapon_name, sizeof(weapon_name));
 
             PrintToConsole(client, "%s", weapon_name[10]);
             PrintToConsole(client, "\t\t%i\t%0.0f\t%i\t%i\t\t%0.0f\t\t%0.0f", 
