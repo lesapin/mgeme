@@ -1,7 +1,7 @@
 #include <signals>
 #include <sourcemod>
 
-#define PLUGIN_VERSION "1.1.0"
+#define PLUGIN_VERSION "1.2.1"
 
 public Plugin myinfo = 
 {
@@ -12,31 +12,161 @@ public Plugin myinfo =
     url = ""
 };
 
-#define MAX_PLAYER_SLOTS    25
-#define DUMP_CYCLE          24 // dump stats every x hours
+#define MAX_PLAYER_SLOTS 25
+#define DUMP_CYCLE       24 // dump stats every x hours
+
+#define TMPPLAYERS "data/uniqueplayers.tmp"
+#define TMPSTATS   "data/serverstats.tmp"
 
 StringMap   UniquePlayers;
 
 int         PlaytimeStore[MAX_PLAYER_SLOTS];
 
-int         MAX_CLIENTS = 0,
-            CUR_CLIENTS = 0,
-            CONNECTIONS = 0,
-            EMPTY_TIME  = 0,
-            LAST_PLAYER = 0;
+int         MAX_CLIENTS  = 0,
+            CUR_CLIENTS  = 0,
+            CONNECTIONS  = 0,
+            ACTIVE_TIME  = 0,
+            FIRST_PLAYER = 0;
 
-/*** ON FUNCTIONS ***/
+/*** ONPLUGIN FUNCTIONS ***/
 
 public void OnPluginStart() 
 {
     UniquePlayers = new StringMap();
-    LAST_PLAYER = GetTime();
+
+    char FilePath[256];
+
+    // import UniquePlayers from tmpfile
+    BuildPath(Path_SM, FilePath, sizeof(FilePath), TMPPLAYERS);
+    
+    if (FileExists(FilePath))
+    {
+        File tmpfile = OpenFile(FilePath, "r");
+
+        if (tmpfile)
+        {
+            char steamid[18]; //ignore newline
+            int timestamp, playtime;
+
+            tmpfile.ReadInt32(timestamp);
+
+            if ((GetTime() - timestamp) < DUMP_CYCLE * 60 * 60)
+            {
+                while (!tmpfile.EndOfFile())
+                {
+                    tmpfile.ReadInt32(playtime);
+                    tmpfile.ReadLine(steamid, sizeof(steamid));
+
+                    if (playtime > 0)
+                        UniquePlayers.SetValue(steamid, playtime, true);
+                }
+
+                LogMessage("Imported UniquePlayers from %s", FilePath);
+            }
+            else
+                LogMessage("%s is old, not importing", FilePath);
+        }
+        else
+            LogError("Couldn't import UniquePlayers from %s", FilePath);
+
+        delete tmpfile;
+        DeleteFile(FilePath);
+    }
+
+    // import serverstats from tmpfile
+    BuildPath(Path_SM, FilePath, sizeof(FilePath), TMPSTATS);
+
+    if (FileExists(FilePath))
+    {
+        File tmpfile = OpenFile(FilePath, "r");
+
+        if (tmpfile)
+        {
+            int timestamp;
+            tmpfile.ReadInt32(timestamp);
+
+            if ((GetTime() - timestamp) < DUMP_CYCLE * 60 * 60)
+            {
+                tmpfile.ReadInt32(MAX_CLIENTS);
+                tmpfile.ReadInt32(CONNECTIONS);
+                tmpfile.ReadInt32(ACTIVE_TIME);
+    
+                LogMessage("Imported server stats from %s", FilePath);
+            }
+            else
+                LogMessage("%s is old, not importing", FilePath);
+
+        }
+        else
+            LogError("Couldn't import serverstats from %s", FilePath);
+
+        delete tmpfile;
+        DeleteFile(FilePath);
+    }
 
     RegServerCmd("serverstats", DumpStats_Cmd);
 
     CreateHandler(USR1, DumpStats_Callback);
     LogMessage("Attached callback for signal USR1");
+
+    CUR_CLIENTS = GetClientCount(true);
+
+    if (CUR_CLIENTS)
+        FIRST_PLAYER = GetTime();
 }
+
+public void OnPluginEnd()
+{
+    // plugin is (re/un)loaded during a dump cycle, export UniquePlayers 
+    char FilePath[256];
+    BuildPath(Path_SM, FilePath, sizeof(FilePath), TMPPLAYERS);
+
+    File tmpfile = OpenFile(FilePath, "w");
+
+    if (tmpfile)
+    {
+        StringMapSnapshot snapshot = UniquePlayers.Snapshot();
+        char steamid[64];
+        int playtime;
+
+        tmpfile.WriteInt32(GetTime()); //timestamp
+
+        for (int i = 0; i < snapshot.Length; i++)
+        {
+            snapshot.GetKey(i, steamid, sizeof(steamid));
+            UniquePlayers.GetValue(steamid, playtime);
+        
+            tmpfile.WriteInt32(playtime);
+            tmpfile.WriteLine(steamid);
+        }
+
+        delete snapshot;
+    }
+    else
+        LogError("Couldn't export UniquePlayers to %s", FilePath);
+
+    tmpfile.Close();
+
+    // export serverstats to tmpfile
+    BuildPath(Path_SM, FilePath, sizeof(FilePath), TMPSTATS);
+
+    tmpfile = OpenFile(FilePath, "w");
+
+    if (tmpfile)
+    {
+        tmpfile.WriteInt32(GetTime()); //timestamp
+
+        tmpfile.WriteInt32(MAX_CLIENTS);
+        tmpfile.WriteInt32(CONNECTIONS);
+        tmpfile.WriteInt32(ACTIVE_TIME);
+    }
+    else
+        LogError("Couldn't export serverstats to %s", FilePath);
+
+    delete tmpfile;
+}
+
+/*** ONCLIENT FUNCTIONS ***/
 
 public void OnClientPutInServer(int client)
 {
@@ -50,11 +180,13 @@ public void OnClientPutInServer(int client)
         UniquePlayers.SetValue(steamid, GetTime(), true);
     }
 
-    if (++CUR_CLIENTS > MAX_CLIENTS)
+    CUR_CLIENTS++;
+
+    if (CUR_CLIENTS > MAX_CLIENTS)
         MAX_CLIENTS = CUR_CLIENTS;
 
     if (CUR_CLIENTS == 1)
-        EMPTY_TIME += (GetTime() - LAST_PLAYER);
+        FIRST_PLAYER = GetTime();
 
     ++CONNECTIONS;
 }
@@ -70,8 +202,10 @@ public void OnClientDisconnect(int client)
 
     PlaytimeStore[client] = 0;
 
-    if (--CUR_CLIENTS == 0)
-        LAST_PLAYER = GetTime();    
+    CUR_CLIENTS--;
+
+    if (!CUR_CLIENTS)
+        ACTIVE_TIME += GetTime() - FIRST_PLAYER;
 }
 
 /*** CALLBACK FUNCTIONS ***/
@@ -134,10 +268,10 @@ bool DumpStats(const char[] filename)
 
         WriteFileLine(f, "MANHOURS %i", totalPlaytime);
 
-        if (CUR_CLIENTS == 0)
-            WriteFileLine(f, "EMPTYTIME %i", EMPTY_TIME + (GetTime() - LAST_PLAYER));
+        if (!CUR_CLIENTS)
+            WriteFileLine(f, "ACTIVETIME %i", ACTIVE_TIME);
         else
-            WriteFileLine(f, "EMPTYTIME %i", EMPTY_TIME == 0 ? DUMP_CYCLE * 60 * 60 : EMPTY_TIME);
+            WriteFileLine(f, "ACTIVETIME %i", ACTIVE_TIME + (GetTime() - FIRST_PLAYER));
 
         WriteFileLine(f, "MAXCLIENTS %i", MAX_CLIENTS);
         WriteFileLine(f, "CONNECTIONS %i", CONNECTIONS);
@@ -162,8 +296,8 @@ void ResetStats()
     CONNECTIONS = CUR_CLIENTS;
     MAX_CLIENTS = CUR_CLIENTS;
 
-    if (CUR_CLIENTS == 0)
-        LAST_PLAYER = GetTime();
+    if (CUR_CLIENTS)
+        FIRST_PLAYER = GetTime();
 
     StringMapSnapshot snapshot = UniquePlayers.Snapshot();
     UniquePlayers.Clear();
