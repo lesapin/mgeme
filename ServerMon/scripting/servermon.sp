@@ -1,7 +1,7 @@
 #include <signals>
 #include <sourcemod>
 
-#define PLUGIN_VERSION "1.2.2"
+#define PLUGIN_VERSION "1.2.3"
 
 public Plugin myinfo = 
 {
@@ -282,16 +282,23 @@ void ResetStats()
         FIRST_PLAYER = GetTime();
 
     StringMapSnapshot snapshot = UniquePlayers.Snapshot();
+    StringMap tempStrMap = UniquePlayers.Clone();
+    
     UniquePlayers.Clear();
 
     char steamid[64]; 
+    int playtime;
 
     for (int i = 0; i < snapshot.Length; i++)
     {
         snapshot.GetKey(i, steamid, sizeof(steamid));
-        UniquePlayers.SetValue(steamid, GetTime(), true);
+        tempStrMap.GetValue(steamid, playtime);
+
+        if (playtime > DUMP_CYCLE * 60 * 60) // player is currently connected
+            UniquePlayers.SetValue(steamid, GetTime(), true);
     }
 
+    delete tempStrMap;
     delete snapshot;
 }
 
