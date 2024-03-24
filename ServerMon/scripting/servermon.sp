@@ -1,7 +1,7 @@
 #include <signals>
 #include <sourcemod>
 
-#define PLUGIN_VERSION "1.2.1"
+#define PLUGIN_VERSION "1.2.2"
 
 public Plugin myinfo = 
 {
@@ -170,25 +170,7 @@ public void OnPluginEnd()
 
 public void OnClientPutInServer(int client)
 {
-    char steamid[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
-
-    // Insert a unique player or update their entry
-    if (!UniquePlayers.SetValue(steamid, GetTime(), false))
-    {
-        UniquePlayers.GetValue(steamid, PlaytimeStore[client]);
-        UniquePlayers.SetValue(steamid, GetTime(), true);
-    }
-
-    CUR_CLIENTS++;
-
-    if (CUR_CLIENTS > MAX_CLIENTS)
-        MAX_CLIENTS = CUR_CLIENTS;
-
-    if (CUR_CLIENTS == 1)
-        FIRST_PLAYER = GetTime();
-
-    ++CONNECTIONS;
+    CreateTimer(5.0, Timer_PostConnect, client);
 }
 
 public void OnClientDisconnect(int client)
@@ -311,4 +293,34 @@ void ResetStats()
     }
 
     delete snapshot;
+}
+
+Action Timer_PostConnect(Handle timer, any data)
+{
+    int client = view_as<int>(data);
+
+    if (IsClientAuthorized(client))
+    {
+        char steamid[64];
+        GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
+
+        // Insert a unique player or update their entry
+        if (!UniquePlayers.SetValue(steamid, GetTime(), false))
+        {
+            UniquePlayers.GetValue(steamid, PlaytimeStore[client]);
+            UniquePlayers.SetValue(steamid, GetTime(), true);
+        }
+
+        CUR_CLIENTS++;
+
+        if (CUR_CLIENTS > MAX_CLIENTS)
+            MAX_CLIENTS = CUR_CLIENTS;
+
+        if (CUR_CLIENTS == 1)
+            FIRST_PLAYER = GetTime();
+
+        ++CONNECTIONS;
+    }
+
+    return Plugin_Stop;
 }
