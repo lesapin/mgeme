@@ -1,7 +1,7 @@
 #include <signals>
 #include <sourcemod>
 
-#define PLUGIN_VERSION "1.2.3"
+#define PLUGIN_VERSION "1.2.4"
 
 public Plugin myinfo = 
 {
@@ -243,10 +243,15 @@ bool DumpStats(const char[] filename)
                 totalPlaytime += playtime;
                 WriteFileLine(f, "PLAYER %s %i", steamid, playtime);
             }
+            else
+            {
+                //todo: add playtimestore value
+                WriteFileLine(f, "PLAYER %s %i", steamid, GetTime() - playtime);
+            }
         }
 
-        //for (int i = 0; i < MAX_PLAYER_SLOTS; i++)
-        //    totalPlaytime += PlaytimeStore[i];
+        for (int i = 1; i < MAX_PLAYER_SLOTS; i++)
+            totalPlaytime += PlaytimeStore[i];
 
         WriteFileLine(f, "MANHOURS %i", totalPlaytime);
 
