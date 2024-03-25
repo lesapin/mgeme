@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.4.2"
+#define PLUGIN_VERSION "1.5.2"
 
 public Plugin myinfo = 
 {
@@ -178,6 +178,9 @@ Action SetSignalCallbacks()
     //SetSignalCallback(USR1, StartVProf);
     //SetSignalCallback(USR2, StopVProf);
 
+    // Switch between skyboxes
+    SetSignalCallback(USR2, SwitchSkyBox);
+
     // Fix jittering issues on long-running maps by reloading the map.
     // SIGWINCH is ignored by default so we can repurpose it. 
     SetSignalCallback(WINCH, ReloadMap);
@@ -260,6 +263,25 @@ Action InstantShutdown()
             // Send a user-friendly shutdown message
             KickClient(client, "Shutting down for maintenance");
         }
+    }
+
+    return Plugin_Continue;
+}
+
+Action SwitchSkyBox()
+{
+    // rotate between night and day skybox
+
+    ConVar skyname = FindConVar("sv_skyname");
+    if (skyname)
+    {
+        char buf[128];
+        skyname.GetString(buf, sizeof(buf));
+
+        if (StrEqual(buf, "sky_morningsnow_01"))
+            skyname.SetString("sky_halloween_night_01");
+        else
+            skyname.SetString("sky_morningsnow_01");
     }
 
     return Plugin_Continue;
