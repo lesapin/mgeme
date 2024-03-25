@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.5.2"
+#define PLUGIN_VERSION "1.5.3"
 
 public Plugin myinfo = 
 {
@@ -26,12 +26,22 @@ public Plugin myinfo =
 DataPack cmds;
 
 Handle QueryTimers[MAXPLAYERS+1];
+
 int PlayerJoinTime[MAXPLAYERS];
+
+ConVar g_cvSkyname;
+ConVar g_cvIsNight;
 
 public void OnPluginStart()
 {
     cmds = CreateDataPack();
+
     SetSignalCallbacks();
+
+    g_cvSkyname = FindConVar("sv_skyname");
+    g_cvIsNight = CreateConVar("sm_isnight", "1"); 
+    g_cvIsNight.SetBool(true);
+    g_cvSkyname.SetString("sky_halloween_night_01");
 
     HookEvent("player_connect_client", Event_PlayerConnect, EventHookMode_Pre);
     HookEvent("player_disconnect", Event_PlayerDisconnect, EventHookMode_Pre);
@@ -84,6 +94,14 @@ public void OnClientDisconnect(int client)
 
         LogMessage("TRACKING %i %i %s %s", PlayerJoinTime[client], GetTime(), steamid, name);
     } 
+}
+
+public void OnMapStart()
+{
+    if (g_cvIsNight.BoolValue)
+        g_cvSkyname.SetString("sky_halloween_night_01");
+    else
+        g_cvSkyname.SetString("sky_morningsnow_01");
 }
 
 public Action QueryDb(Handle timer, DataPack pack)
@@ -271,17 +289,17 @@ Action InstantShutdown()
 Action SwitchSkyBox()
 {
     // rotate between night and day skybox
-
-    ConVar skyname = FindConVar("sv_skyname");
-    if (skyname)
+    if (g_cvIsNight.BoolValue)
     {
-        char buf[128];
-        skyname.GetString(buf, sizeof(buf));
-
-        if (StrEqual(buf, "sky_morningsnow_01"))
-            skyname.SetString("sky_halloween_night_01");
-        else
-            skyname.SetString("sky_morningsnow_01");
+        g_cvIsNight.SetBool(false);
+        g_cvSkyname.SetString("sky_morningsnow_01");
+        MC_PrintToChatAll("{gold}[SERVER] {default}The sun rises.");
+    }
+    else
+    {
+        g_cvIsNight.SetBool(true);
+        g_cvSkyname.SetString("sky_halloween_night_01");
+        MC_PrintToChatAll("{gold}[SERVER] {default}Entering night time");
     }
 
     return Plugin_Continue;
