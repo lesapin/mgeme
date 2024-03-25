@@ -331,7 +331,8 @@ Action Timer_PostConnect(Handle timer, any data)
     char steamid[64];
     int client = view_as<int>(data);
     
-    if (GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid)))
+    if (IsClientConnected(client) &&
+        GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid)))
     {
         // Insert a unique player or update their entry
         if (!UniquePlayers.SetValue(steamid, GetTime(), false))
