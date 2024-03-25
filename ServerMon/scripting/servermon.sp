@@ -172,9 +172,7 @@ public void OnClientConnected(int client)
 {
     CreateTimer(7.0, Timer_PostConnect, client);
 
-    CUR_CLIENTS++;
-
-    if (CUR_CLIENTS > MAX_CLIENTS)
+    if (++CUR_CLIENTS > MAX_CLIENTS)
         MAX_CLIENTS = CUR_CLIENTS;
 
     if (CUR_CLIENTS == 1)
@@ -196,9 +194,7 @@ public void OnClientDisconnect(int client)
         PlaytimeStore[client] = 0;
     }
 
-    CUR_CLIENTS--;
-
-    if (!CUR_CLIENTS)
+    if (!(--CUR_CLIENTS))
         ACTIVE_TIME += GetTime() - FIRST_PLAYER;
 }
 
