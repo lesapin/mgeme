@@ -340,9 +340,9 @@ Action Timer_PostConnect(Handle timer, any data)
             UniquePlayers.GetValue(steamid, PlaytimeStore[client]);
             UniquePlayers.SetValue(steamid, GetTime(), true);
         }
-    }
 
-    ++CONNECTIONS;
+        ++CONNECTIONS;
+    }
 
     return Plugin_Stop;
 }
