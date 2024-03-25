@@ -1,7 +1,7 @@
 #include <signals>
 #include <sourcemod>
 
-#define PLUGIN_VERSION "1.2.5"
+#define PLUGIN_VERSION "1.2.6"
 
 public Plugin myinfo = 
 {
@@ -33,6 +33,16 @@ int         MAX_CLIENTS  = 0,
 public void OnPluginStart() 
 {
     UniquePlayers = new StringMap();
+
+    RegServerCmd("sm_dumpstats", DumpStats_Cmd);
+
+    CreateHandler(USR1, DumpStats_Callback);
+    LogMessage("Attached callback for signal USR1");
+
+    CUR_CLIENTS = GetClientCount(true);
+
+    if (CUR_CLIENTS)
+        FIRST_PLAYER = GetTime();
 
     char FilePath[256];
 
@@ -103,16 +113,6 @@ public void OnPluginStart()
         delete tmpfile;
         DeleteFile(FilePath);
     }
-
-    RegServerCmd("serverstats", DumpStats_Cmd);
-
-    CreateHandler(USR1, DumpStats_Callback);
-    LogMessage("Attached callback for signal USR1");
-
-    CUR_CLIENTS = GetClientCount(true);
-
-    if (CUR_CLIENTS)
-        FIRST_PLAYER = GetTime();
 }
 
 public void OnPluginEnd()
@@ -170,15 +170,7 @@ public void OnPluginEnd()
 
 public void OnClientConnected(int client)
 {
-    char steamid[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
-
-    // Insert a unique player or update their entry
-    if (!UniquePlayers.SetValue(steamid, GetTime(), false))
-    {
-        UniquePlayers.GetValue(steamid, PlaytimeStore[client]);
-        UniquePlayers.SetValue(steamid, GetTime(), true);
-    }
+    CreateTimer(7.0, Timer_PostConnect, client);
 
     CUR_CLIENTS++;
 
@@ -187,20 +179,22 @@ public void OnClientConnected(int client)
 
     if (CUR_CLIENTS == 1)
         FIRST_PLAYER = GetTime();
-
-    ++CONNECTIONS;
 }
 
 public void OnClientDisconnect(int client)
 {
     char steamid[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
-    
-    int ConnectionTime;
-    UniquePlayers.GetValue(steamid, ConnectionTime);
-    UniquePlayers.SetValue(steamid, (GetTime() - ConnectionTime) + PlaytimeStore[client]);
 
-    PlaytimeStore[client] = 0;
+    if (GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid)) &&
+        UniquePlayers.ContainsKey(steamid))
+    {
+        int ConnectionTime;
+
+        UniquePlayers.GetValue(steamid, ConnectionTime);
+        UniquePlayers.SetValue(steamid, (GetTime() - ConnectionTime) + PlaytimeStore[client]);
+
+        PlaytimeStore[client] = 0;
+    }
 
     CUR_CLIENTS--;
 
@@ -304,23 +298,50 @@ void ResetStats()
     if (CUR_CLIENTS)
         FIRST_PLAYER = GetTime();
 
+    ACTIVE_TIME = 0;
+
     StringMapSnapshot snapshot = UniquePlayers.Snapshot();
     StringMap tempStrMap = UniquePlayers.Clone();
     
     UniquePlayers.Clear();
 
-    char steamid[64]; 
-    int playtime;
-
     for (int i = 0; i < snapshot.Length; i++)
     {
+        char steamid[64]; 
+        int playtime;
+
         snapshot.GetKey(i, steamid, sizeof(steamid));
         tempStrMap.GetValue(steamid, playtime);
 
         if (playtime > DUMP_CYCLE * 60 * 60) // player is currently connected
+        { 
             UniquePlayers.SetValue(steamid, GetTime(), true);
+        } 
     }
+
+    for (int i = 1; i < MAX_PLAYER_SLOTS; i++)
+        PlaytimeStore[i] = 0;
 
     delete tempStrMap;
     delete snapshot;
+}
+
+Action Timer_PostConnect(Handle timer, any data)
+{
+    char steamid[64];
+    int client = view_as<int>(data);
+    
+    if (GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid)))
+    {
+        // Insert a unique player or update their entry
+        if (!UniquePlayers.SetValue(steamid, GetTime(), false))
+        {
+            UniquePlayers.GetValue(steamid, PlaytimeStore[client]);
+            UniquePlayers.SetValue(steamid, GetTime(), true);
+        }
+    }
+
+    ++CONNECTIONS;
+
+    return Plugin_Stop;
 }
