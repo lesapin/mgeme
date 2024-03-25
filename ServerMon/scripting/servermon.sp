@@ -1,7 +1,7 @@
 #include <signals>
 #include <sourcemod>
 
-#define PLUGIN_VERSION "1.2.6"
+#define PLUGIN_VERSION "1.2.10"
 
 public Plugin myinfo = 
 {
@@ -55,7 +55,7 @@ public void OnPluginStart()
 
         if (tmpfile)
         {
-            char steamid[18]; //ignore newline
+            char steamid[64];
             int timestamp, playtime;
 
             tmpfile.ReadInt32(timestamp);
@@ -66,9 +66,12 @@ public void OnPluginStart()
                 {
                     tmpfile.ReadInt32(playtime);
                     tmpfile.ReadLine(steamid, sizeof(steamid));
+                
+                    char buf[18];
+                    SplitString(steamid, "\n", buf, sizeof(buf));
 
                     if (playtime > 0)
-                        UniquePlayers.SetValue(steamid, playtime, true);
+                        UniquePlayers.SetValue(buf, playtime, true);
                 }
 
                 LogMessage("Imported UniquePlayers from %s", FilePath);
@@ -327,16 +330,16 @@ Action Timer_PostConnect(Handle timer, any data)
     char steamid[64];
     int client = view_as<int>(data);
     
-    if (IsClientConnected(client) &&
+    if (IsClientConnected(client) && 
         GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid)))
     {
         // Insert a unique player or update their entry
-        if (!UniquePlayers.SetValue(steamid, GetTime(), false))
+        if (!UniquePlayers.SetValue(steamid, GetTime() - 7, false))
         {
             UniquePlayers.GetValue(steamid, PlaytimeStore[client]);
-            UniquePlayers.SetValue(steamid, GetTime(), true);
+            UniquePlayers.SetValue(steamid, GetTime() - 7, true);
         }
-
+    
         ++CONNECTIONS;
     }
 
