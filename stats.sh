@@ -64,18 +64,21 @@ avg_empty=$((24-avg_activity))
 
 today=`date +%m%d`
 
-# Plot
+# Plotting
 
 if [ $nLogs -eq 0 ]
 then
 	echo "Error: no .stat files found in ./stats.sh folder"
-elif [ $nLogs -eq 1 ]
+ 	exit 1
+elif [ $nLogs -eq 1 ] || [ $nLogs -eq 2 ]
 then
-	continue
-elif [ $nLogs -eq 2 ]
+	echo "Too few data points to plot"
+	exit 1
+elif [ $nLogs -gt 31 ]
 then
-	continue
-else
+	nLogs=31
+fi
+
 gnuplot <<- EOF
 	set title "$title" tc rgb 0xffffff
 	set tics font ",9"
@@ -116,6 +119,6 @@ gnuplot <<- EOF
 	     "$DATFILE" u 1:(column(2)/60/60) t 'man-hours' w points lw 2 lc "yellow", \
 	     f(x) t 'playtime trend' with lines dt 2 lc "yellow"
 EOF
-	cp $IMGFILE /var/www/statistics/
-fi
+
+cp $IMGFILE /var/www/statistics/
 
