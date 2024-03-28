@@ -10,11 +10,8 @@ filename=${title// /_}
 LOGS=`ls *.stats`
 DATFILE="${filename}.dat"
 IMGFILE="${filename}.png"
-foldername=`date +%b%g`
 
 IFS=$'\n'
-
-mkdir -p $foldername
 
 # print .dat header
 printf "# gnuplot datfile - %s\n" $title > $DATFILE
@@ -26,6 +23,7 @@ max_clients=0
 active_hours=0
 
 # Parse log files
+
 for log in $LOGS;
 do
 	nLogs=$((nLogs+1))
@@ -58,6 +56,7 @@ avg_activity=$(((active_hours/nLogs)/60/60))
 avg_empty=$((24-avg_activity))
 
 # Plot
+
 gnuplot <<- EOF
 	set title "$title" tc rgb 0xffffff
 	set tics font ",9"
@@ -77,17 +76,35 @@ gnuplot <<- EOF
 	set y2range [0 : 100]
 	set y2tics nomirror tc rgb 0xb7f8f1 0,5
 
-	set term png size 1280,620 transparent truecolor
-	set output "$IMGFILE"
-
-	set label 1 at screen 0.848,0.8  \
+	set label 1 at screen 0.848,0.75  \
 	    "Activity (avg/day)\n active: $avg_activity hours\n empty: $avg_empty hours" \
             tc rgb 0xffffff
 
-	set label 2 at screen 0.848,0.65 "Connections\n $nConnections" tc rgb 0xffffff
+	set label 2 at screen 0.848,0.60 "Connections\n $nConnections" tc rgb 0xffffff
 
-	set label 3 at screen 0.848,0.55 "MaxClients (avg/day)\n $avg_maxclients" tc rgb 0xffffff
+	set label 3 at screen 0.848,0.50 "MaxClients (avg/day)\n $avg_maxclients" tc rgb 0xffffff
 
-	plot "$DATFILE" u 1:(column(2)/60/60) t 'man-hours' w lines lc "yellow", \
-     	     "$DATFILE" u 1:5 axes x1y2 t 'unique clients' w boxes lc rgb 0xb7f8f1
+ 	# playtime trend
+	k=10e-10
+	f(x) = k*x + b 
+        fit f(x) "$DATFILE" u 1:(column(2)/60/60) via k,b
+
+	set term pngcairo size 1280,620 transparent truecolor dashed
+	set output "$IMGFILE"
+
+	plot ["0322":"0328"] "$DATFILE" u 1:5 axes x1y2 t 'unique clients' w boxes lc rgb 0xb7f8f1, \
+	     "$DATFILE" u 1:(column(2)/60/60) t 'man-hours' w lines lc "yellow", \
+	     f(x) t 'playtime trend' with lines dt 2 lc "yellow"
 EOF
+
+# Do cleanup
+
+foldername=`date +%b%g`
+mkdir -p $foldername
+
+mv *.stats $foldername
+mv *.log $foldername
+mv $DATFILE $foldername
+
+cp $IMGFILE /var/www/statistics/
+mv $IMGFILE $foldername
