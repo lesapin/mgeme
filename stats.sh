@@ -4,7 +4,14 @@
 # gnuplot .dat file. Use gnuplot to create statistics of server activity.
 
 args=("$@")
-title=${args[0]}
+
+if [ $# -eq 0 ] 
+then
+	title="Player activity - `date +%B\ %Y`"
+else
+	title=${args[0]}
+fi
+
 filename=${title// /_}
 
 LOGS=`ls *.stats`
@@ -55,8 +62,20 @@ avg_maxclients=$((max_clients/nLogs))
 avg_activity=$(((active_hours/nLogs)/60/60))
 avg_empty=$((24-avg_activity))
 
+today=`date +%m%d`
+
 # Plot
 
+if [ $nLogs -eq 0 ]
+then
+	echo "Error: no .stat files found in ./stats.sh folder"
+elif [ $nLogs -eq 1 ]
+then
+	continue
+elif [ $nLogs -eq 2 ]
+then
+	continue
+else
 gnuplot <<- EOF
 	set title "$title" tc rgb 0xffffff
 	set tics font ",9"
@@ -92,19 +111,11 @@ gnuplot <<- EOF
 	set term pngcairo size 1280,620 transparent truecolor dashed
 	set output "$IMGFILE"
 
-	plot ["0322":"0328"] "$DATFILE" u 1:5 axes x1y2 t 'unique clients' w boxes lc rgb 0xb7f8f1, \
-	     "$DATFILE" u 1:(column(2)/60/60) t 'man-hours' w lines lc "yellow", \
+	plot ["0322":"${today}"] \
+             "$DATFILE" u 1:5 axes x1y2 t 'unique clients' w boxes lc rgb 0xb7f8f1, \
+	     "$DATFILE" u 1:(column(2)/60/60) t 'man-hours' w points lw 2 lc "yellow", \
 	     f(x) t 'playtime trend' with lines dt 2 lc "yellow"
 EOF
+	cp $IMGFILE /var/www/statistics/
+fi
 
-# Do cleanup
-
-foldername=`date +%b%g`
-mkdir -p $foldername
-
-mv *.stats $foldername
-mv *.log $foldername
-mv $DATFILE $foldername
-
-cp $IMGFILE /var/www/statistics/
-mv $IMGFILE $foldername
